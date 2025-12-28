@@ -3,137 +3,171 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mapa Sonoro: Venues & Bandas</title>
+    <title>VibeRadar - Mapa de la Escena Local</title>
     
+    <!-- CSS de Leaflet y Buscador -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet-search@3.0.9/dist/leaflet-search.min.css" />
+    
     <style>
-        body { margin: 0; padding: 0; font-family: 'Segoe UI', sans-serif; background: #121212; }
+        :root {
+            --primary: #ff3e3e;
+            --dark-card: #1e1e1e;
+            --text-light: #ffffff;
+        }
+        body { margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, sans-serif; background: #121212; }
         #map { height: 100vh; width: 100%; }
-        
-        /* Interfaz flotante */
+
+        /* Panel de Control */
         .ui-panel {
-            position: absolute; top: 10px; left: 10px; z-index: 1000;
-            background: rgba(255, 255, 255, 0.95); padding: 20px;
-            border-radius: 15px; width: 280px; box-shadow: 0 10px 25px rgba(0,0,0,0.4);
+            position: absolute; top: 20px; left: 20px; z-index: 1000;
+            background: rgba(255, 255, 255, 0.98); padding: 25px;
+            border-radius: 16px; width: 280px; box-shadow: 0 10px 40px rgba(0,0,0,0.4);
         }
+        h1 { margin: 0 0 5px 0; font-size: 26px; color: #111; letter-spacing: -1px; }
+        .tagline { font-size: 12px; color: #666; margin-bottom: 20px; display: block; }
+
         .btn-geo {
-            width: 100%; background: #ff3e3e; color: white; border: none;
-            padding: 12px; border-radius: 8px; cursor: pointer; font-weight: bold; margin-bottom: 15px;
+            width: 100%; background: var(--primary); color: white; border: none;
+            padding: 12px; border-radius: 8px; cursor: pointer; font-weight: bold;
+            transition: 0.3s; margin-bottom: 15px;
         }
-        .filter-group { margin-bottom: 15px; }
-        select, button { cursor: pointer; }
+        .btn-geo:hover { background: #e63535; transform: translateY(-2px); }
+
+        select { width: 100%; padding: 10px; border-radius: 8px; border: 1px solid #ddd; margin-top: 5px; }
         
-        /* Estilo de los Popups */
-        .leaflet-popup-content-wrapper { background: #1a1a1a; color: white; border-radius: 10px; }
-        .venue-popup b { color: #f1c40f; font-size: 16px; }
-        .band-popup b { color: #3498db; font-size: 16px; }
+        /* Ajustes del Buscador para que combine con el diseño */
+        .leaflet-control-search { 
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2) !important;
+            border-radius: 8px !important;
+            border: none !important;
+        }
+
+        .genre-icon { font-size: 22px; text-shadow: 0 2px 5px rgba(0,0,0,0.3); }
     </style>
 </head>
 <body>
 
     <div class="ui-panel">
-        <h2 style="margin:0 0 10px 0; color: #333;">🎸 Sonido Local</h2>
-        <button class="btn-geo" onclick="findMe()">📍 BUSCAR CERCA DE MÍ</button>
+        <h1>📡 VibeRadar</h1>
+        <span class="tagline">Explora la música de tu ciudad</span>
         
-        <div class="filter-group">
-            <label>Mostrar:</label><br>
-            <input type="checkbox" id="checkVenues" checked onchange="renderAll()"> 🍺 Bares y Foros<br>
-            <input type="checkbox" id="checkBands" checked onchange="renderAll()"> 🎸 Bandas (Aprox)
-        </div>
-
-        <div class="filter-group">
-            <label>Género Musical:</label>
-            <select id="genreSelect" onchange="renderAll()" style="width:100%; padding:8px;">
-                <option value="all">Todos los estilos</option>
-                <option value="Rock">Rock / Metal</option>
-                <option value="Indie">Indie / Alternativo</option>
-                <option value="Jazz">Jazz / Blues</option>
-                <option value="Punk">Punk / Ska</option>
+        <button class="btn-geo" onclick="findMe()">📍 BANDAS CERCA DE MÍ</button>
+        
+        <div style="margin-bottom: 15px;">
+            <label style="font-weight: bold; font-size: 14px;">Filtrar por Estilo:</label>
+            <select id="genreSelect" onchange="renderMarkers()">
+                <option value="all">🎸 Todos los géneros</option>
+                <option value="Rock">Rock</option>
+                <option value="Metal">Metal</option>
+                <option value="Indie">Indie</option>
+                <option value="Jazz">Jazz</option>
+                <option value="Punk">Punk</option>
             </select>
         </div>
-        <hr>
-        <small style="color: #666;">Beta v4 - CDMX / GDL / EDOMEX</small>
+
+        <div style="border-top: 1px solid #eee; padding-top: 10px;">
+            <label style="font-size: 14px; cursor: pointer;">
+                <input type="checkbox" id="showVenues" checked onchange="renderMarkers()"> Ver Bares y Foros 🍺
+            </label>
+        </div>
     </div>
 
     <div id="map"></div>
 
+    <!-- Scripts -->
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet-search@3.0.9/dist/leaflet-search.min.js"></script>
     
     <script>
-        // --- 1. CONFIGURACIÓN INICIAL ---
-        const map = L.map('map').setView([19.4326, -99.1332], 12);
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map);
+        // 1. CAPAS DE MAPA (DÍA Y NOCHE)
+        const darkMap = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { attribution: '©CartoDB' });
+        const lightMap = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', { attribution: '©CartoDB' });
 
-        const venueLayer = L.layerGroup().addTo(map);
-        const bandLayer = L.layerGroup().addTo(map);
+        const map = L.map('map', {
+            center: [19.4326, -99.1332],
+            zoom: 13,
+            layers: [darkMap]
+        });
 
-        // --- 2. TUS DATOS DE VENUES (Geolocalizados) ---
-        const venuesData = [
-            { name: "Capitan Gallo", coords: [19.4297, -99.1465], tel: "5614909139", mail: "145capitangallo@gmail.com", addr: "Ayuntamiento 145, Centro" },
-            { name: "Multiforo 246", coords: [19.4129, -99.1661], tel: "5510547249", addr: "Querétaro 246, Roma Nte." },
-            { name: "Dobermann Donceles", coords: [19.4352, -99.1415], tel: "5520846149", addr: "Donceles 12, Centro" },
-            { name: "Multiforo Alicia", coords: [19.4475, -99.1558], addr: "Eligio Ancona 145, Sta María la Ribera" },
-            { name: "McCarthy's Irish Pub", coords: [19.3902, -99.1764], tel: "5521242066", addr: "Insurgentes Sur 573, Nápoles" },
-            { name: "Denso Rock", coords: [19.4385, -99.1528], addr: "Tomas Alva Edison 89, Tabacalera" },
-            { name: "Cueva De Lobos", coords: [19.4255, -99.1633], tel: "5555072186", addr: "Génova 30, Juárez" },
-            { name: "London Blue", coords: [19.4258, -99.1668], tel: "5513767842", addr: "Londres 106, Juárez" },
-            { name: "Corvo Motorcycle Lounge", coords: [19.3752, -99.1865], tel: "5520753549", addr: "Av. Revolución 922b" },
-            { name: "Foro La Catedral", coords: [19.4588, -99.1331], addr: "Franz Schubert 165, Peralvillo" },
-            { name: "Pizza del Perro Negro / Sangriento", coords: [19.4678, -99.1872], tel: "5553517401", addr: "Primavera 106, Ángel Zimbrón" },
-            { name: "Foro Cultural Hilvana", coords: [19.4402, -99.1485], addr: "Av. México-Tenochtitlán 17" },
-            { name: "CCC Centro Cultural Calzada", coords: [20.6841, -103.3385], tel: "3338424932", addr: "Guadalajara, Jal." },
-            { name: "Pub de Floki", coords: [19.6262, -99.0921], tel: "7299673670", addr: "Villa de las Flores, Méx." }
+        const baseMaps = { "🌙 Modo Noche": darkMap, "☀️ Modo Día": lightMap };
+        L.control.layers(baseMaps, null, { position: 'topright' }).addTo(map);
+
+        // 2. DATOS DE PRUEBA (Venues y Bandas combinados para la búsqueda)
+        const genreIcons = { "Rock": "🎸", "Metal": "🤘", "Indie": "🎹", "Jazz": "🎷", "Punk": "🧷", "Venue": "🍺" };
+        
+        const venues = [
+            { name: "Capitan Gallo", type: "Venue", coords: [19.4297, -99.1465], info: "Ayuntamiento 145, Centro" },
+            { name: "Multiforo 246", type: "Venue", coords: [19.4129, -99.1661], info: "Querétaro 246, Roma Nte." },
+            { name: "Dobermann Donceles", type: "Venue", coords: [19.4352, -99.1415], info: "Donceles 12, Centro" },
+            { name: "Pub de Floki", type: "Venue", coords: [19.6262, -99.0921], info: "Coacalco, Edomex" }
         ];
 
-        // --- 3. DATOS DE BANDAS (Inyectadas para prueba con Jitter de seguridad) ---
-        const bandsData = [
-            { name: "Maldita Justicia", genre: "Rock", baseCoords: [19.42, -99.15] },
-            { name: "Sintetizador X", genre: "Indie", baseCoords: [19.41, -99.16] },
-            { name: "Rencor Metal", genre: "Rock", baseCoords: [19.45, -99.14] },
-            { name: "Ruta 44", genre: "Jazz", baseCoords: [20.67, -103.34] } // En GDL
+        const bands = [
+            { name: "Bestia Nocturna", type: "Metal", coords: [19.410, -99.170], info: "Heavy Metal" },
+            { name: "Los Ecos", type: "Indie", coords: [19.420, -99.160], info: "Alternative Indie" },
+            { name: "Jazz Cats", type: "Jazz", coords: [19.415, -99.168], info: "Bebop & Fusion" }
         ];
 
-        // --- 4. LÓGICA DE RENDERIZADO ---
-        function renderAll() {
-            venueLayer.clearLayers();
-            bandLayer.clearLayers();
+        // 3. CAPA DE BÚSQUEDA Y RENDERIZADO
+        const markersLayer = L.layerGroup().addTo(map);
 
-            const showVenues = document.getElementById('checkVenues').checked;
-            const showBands = document.getElementById('checkBands').checked;
-            const genre = document.getElementById('genreSelect').value;
+        function renderMarkers() {
+            markersLayer.clearLayers();
+            const selectedGenre = document.getElementById('genreSelect').value;
+            const viewVenues = document.getElementById('showVenues').checked;
 
-            // Dibujar Venues
-            if (showVenues) {
-                venuesData.forEach(v => {
-                    const iconVenue = L.divIcon({
-                        html: `<div style="background:#f1c40f; width:12px; height:12px; border-radius:50%; border:2px solid white;"></div>`,
-                        className: ''
-                    });
-                    L.marker(v.coords, {icon: iconVenue})
-                        .bindPopup(`<div class="venue-popup"><b>🍺 ${v.name}</b><br><small>${v.addr}</small><br>📞 ${v.tel || 'Sin tel.'}<br>${v.mail || ''}</div>`)
-                        .addTo(venueLayer);
+            // Procesar Venues
+            if(viewVenues) {
+                venues.forEach(v => {
+                    addMarker(v, genreIcons["Venue"]);
                 });
             }
 
-            // Dibujar Bandas con Seguridad (Jitter)
-            if (showBands) {
-                bandsData.forEach(b => {
-                    if (genre === "all" || b.genre === genre) {
-                        const jitter = () => (Math.random() - 0.5) * 0.008;
-                        const secureCoords = [b.baseCoords[0] + jitter(), b.baseCoords[1] + jitter()];
-                        
-                        L.circleMarker(secureCoords, {
-                            radius: 8, color: '#3498db', weight: 2, fillOpacity: 0.7
-                        }).bindPopup(`<div class="band-popup"><b>🎸 ${b.name}</b><br>Género: ${b.genre}<br><i>Ubicación aproximada por seguridad</i></div>`)
-                        .addTo(bandLayer);
-                    }
-                });
-            }
+            // Procesar Bandas (con seguridad Jitter)
+            bands.forEach(b => {
+                if(selectedGenre === "all" || b.type === selectedGenre) {
+                    const jitter = () => (Math.random() - 0.5) * 0.006;
+                    const secureCoords = [b.coords[0] + jitter(), b.coords[1] + jitter()];
+                    addMarker({...b, coords: secureCoords}, genreIcons[b.type]);
+                }
+            });
         }
 
-        // --- 5. GEOLOCALIZACIÓN ---
+        function addMarker(data, iconEmoji) {
+            const customIcon = L.divIcon({
+                className: 'genre-icon',
+                html: iconEmoji,
+                iconSize: [30, 30]
+            });
+
+            const marker = L.marker(data.coords, { 
+                icon: customIcon,
+                title: data.name // Esto es lo que lee el buscador
+            }).bindPopup(`<b>${data.name}</b><br>${data.info}`);
+            
+            markersLayer.addLayer(marker);
+        }
+
+        // 4. CONFIGURAR LA BARRA DE BÚSQUEDA
+        const searchControl = new L.Control.Search({
+            layer: markersLayer,
+            propertyName: 'title', // Busca por el atributo 'title' del marcador
+            marker: false,
+            moveToLocation: function(latlng, title, map) {
+                map.setView(latlng, 16); // Hace zoom al encontrarlo
+            }
+        });
+
+        searchControl.on('search:locationfound', function(e) {
+            e.layer.openPopup();
+        });
+
+        map.addControl(searchControl);
+
+        // 5. GEOLOCALIZACIÓN
         function findMe() {
-            map.locate({setView: true, maxZoom: 14});
+            map.locate({setView: true, maxZoom: 15});
         }
 
         map.on('locationfound', e => {
@@ -142,7 +176,7 @@
         });
 
         // Inicio
-        renderAll();
+        renderMarkers();
     </script>
 </body>
 </html>
