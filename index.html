@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mapa Sonoro: Venues & Bandas</title>
+    
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        body { margin: 0; padding: 0; font-family: 'Segoe UI', sans-serif; background: #121212; }
+        #map { height: 100vh; width: 100%; }
+        
+        /* Interfaz flotante */
+        .ui-panel {
+            position: absolute; top: 10px; left: 10px; z-index: 1000;
+            background: rgba(255, 255, 255, 0.95); padding: 20px;
+            border-radius: 15px; width: 280px; box-shadow: 0 10px 25px rgba(0,0,0,0.4);
+        }
+        .btn-geo {
+            width: 100%; background: #ff3e3e; color: white; border: none;
+            padding: 12px; border-radius: 8px; cursor: pointer; font-weight: bold; margin-bottom: 15px;
+        }
+        .filter-group { margin-bottom: 15px; }
+        select, button { cursor: pointer; }
+        
+        /* Estilo de los Popups */
+        .leaflet-popup-content-wrapper { background: #1a1a1a; color: white; border-radius: 10px; }
+        .venue-popup b { color: #f1c40f; font-size: 16px; }
+        .band-popup b { color: #3498db; font-size: 16px; }
+    </style>
+</head>
+<body>
+
+    <div class="ui-panel">
+        <h2 style="margin:0 0 10px 0; color: #333;">🎸 Sonido Local</h2>
+        <button class="btn-geo" onclick="findMe()">📍 BUSCAR CERCA DE MÍ</button>
+        
+        <div class="filter-group">
+            <label>Mostrar:</label><br>
+            <input type="checkbox" id="checkVenues" checked onchange="renderAll()"> 🍺 Bares y Foros<br>
+            <input type="checkbox" id="checkBands" checked onchange="renderAll()"> 🎸 Bandas (Aprox)
+        </div>
+
+        <div class="filter-group">
+            <label>Género Musical:</label>
+            <select id="genreSelect" onchange="renderAll()" style="width:100%; padding:8px;">
+                <option value="all">Todos los estilos</option>
+                <option value="Rock">Rock / Metal</option>
+                <option value="Indie">Indie / Alternativo</option>
+                <option value="Jazz">Jazz / Blues</option>
+                <option value="Punk">Punk / Ska</option>
+            </select>
+        </div>
+        <hr>
+        <small style="color: #666;">Beta v4 - CDMX / GDL / EDOMEX</small>
+    </div>
+
+    <div id="map"></div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    
+    <script>
+        // --- 1. CONFIGURACIÓN INICIAL ---
+        const map = L.map('map').setView([19.4326, -99.1332], 12);
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map);
+
+        const venueLayer = L.layerGroup().addTo(map);
+        const bandLayer = L.layerGroup().addTo(map);
+
+        // --- 2. TUS DATOS DE VENUES (Geolocalizados) ---
+        const venuesData = [
+            { name: "Capitan Gallo", coords: [19.4297, -99.1465], tel: "5614909139", mail: "145capitangallo@gmail.com", addr: "Ayuntamiento 145, Centro" },
+            { name: "Multiforo 246", coords: [19.4129, -99.1661], tel: "5510547249", addr: "Querétaro 246, Roma Nte." },
+            { name: "Dobermann Donceles", coords: [19.4352, -99.1415], tel: "5520846149", addr: "Donceles 12, Centro" },
+            { name: "Multiforo Alicia", coords: [19.4475, -99.1558], addr: "Eligio Ancona 145, Sta María la Ribera" },
+            { name: "McCarthy's Irish Pub", coords: [19.3902, -99.1764], tel: "5521242066", addr: "Insurgentes Sur 573, Nápoles" },
+            { name: "Denso Rock", coords: [19.4385, -99.1528], addr: "Tomas Alva Edison 89, Tabacalera" },
+            { name: "Cueva De Lobos", coords: [19.4255, -99.1633], tel: "5555072186", addr: "Génova 30, Juárez" },
+            { name: "London Blue", coords: [19.4258, -99.1668], tel: "5513767842", addr: "Londres 106, Juárez" },
+            { name: "Corvo Motorcycle Lounge", coords: [19.3752, -99.1865], tel: "5520753549", addr: "Av. Revolución 922b" },
+            { name: "Foro La Catedral", coords: [19.4588, -99.1331], addr: "Franz Schubert 165, Peralvillo" },
+            { name: "Pizza del Perro Negro / Sangriento", coords: [19.4678, -99.1872], tel: "5553517401", addr: "Primavera 106, Ángel Zimbrón" },
+            { name: "Foro Cultural Hilvana", coords: [19.4402, -99.1485], addr: "Av. México-Tenochtitlán 17" },
+            { name: "CCC Centro Cultural Calzada", coords: [20.6841, -103.3385], tel: "3338424932", addr: "Guadalajara, Jal." },
+            { name: "Pub de Floki", coords: [19.6262, -99.0921], tel: "7299673670", addr: "Villa de las Flores, Méx." }
+        ];
+
+        // --- 3. DATOS DE BANDAS (Inyectadas para prueba con Jitter de seguridad) ---
+        const bandsData = [
+            { name: "Maldita Justicia", genre: "Rock", baseCoords: [19.42, -99.15] },
+            { name: "Sintetizador X", genre: "Indie", baseCoords: [19.41, -99.16] },
+            { name: "Rencor Metal", genre: "Rock", baseCoords: [19.45, -99.14] },
+            { name: "Ruta 44", genre: "Jazz", baseCoords: [20.67, -103.34] } // En GDL
+        ];
+
+        // --- 4. LÓGICA DE RENDERIZADO ---
+        function renderAll() {
+            venueLayer.clearLayers();
+            bandLayer.clearLayers();
+
+            const showVenues = document.getElementById('checkVenues').checked;
+            const showBands = document.getElementById('checkBands').checked;
+            const genre = document.getElementById('genreSelect').value;
+
+            // Dibujar Venues
+            if (showVenues) {
+                venuesData.forEach(v => {
+                    const iconVenue = L.divIcon({
+                        html: `<div style="background:#f1c40f; width:12px; height:12px; border-radius:50%; border:2px solid white;"></div>`,
+                        className: ''
+                    });
+                    L.marker(v.coords, {icon: iconVenue})
+                        .bindPopup(`<div class="venue-popup"><b>🍺 ${v.name}</b><br><small>${v.addr}</small><br>📞 ${v.tel || 'Sin tel.'}<br>${v.mail || ''}</div>`)
+                        .addTo(venueLayer);
+                });
+            }
+
+            // Dibujar Bandas con Seguridad (Jitter)
+            if (showBands) {
+                bandsData.forEach(b => {
+                    if (genre === "all" || b.genre === genre) {
+                        const jitter = () => (Math.random() - 0.5) * 0.008;
+                        const secureCoords = [b.baseCoords[0] + jitter(), b.baseCoords[1] + jitter()];
+                        
+                        L.circleMarker(secureCoords, {
+                            radius: 8, color: '#3498db', weight: 2, fillOpacity: 0.7
+                        }).bindPopup(`<div class="band-popup"><b>🎸 ${b.name}</b><br>Género: ${b.genre}<br><i>Ubicación aproximada por seguridad</i></div>`)
+                        .addTo(bandLayer);
+                    }
+                });
+            }
+        }
+
+        // --- 5. GEOLOCALIZACIÓN ---
+        function findMe() {
+            map.locate({setView: true, maxZoom: 14});
+        }
+
+        map.on('locationfound', e => {
+            L.circle(e.latlng, e.accuracy).addTo(map);
+            L.marker(e.latlng).addTo(map).bindPopup("Estás aquí").openPopup();
+        });
+
+        // Inicio
+        renderAll();
+    </script>
+</body>
+</html>
